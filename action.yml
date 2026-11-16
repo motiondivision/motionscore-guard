@@ -1,5 +1,5 @@
 name: Motion Performance Guard
-description: Catch animation performance regressions on every pull request, with a MotionScore baseline check. Part of Motion+ Pro.
+description: Catch animation performance regressions on every PR. Part of Motion Cloud.
 author: Motion
 branding:
   icon: activity
