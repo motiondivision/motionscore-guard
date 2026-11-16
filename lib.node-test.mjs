@@ -199,3 +199,13 @@ describe("escapeCommand", () => {
     assert.equal(escapeCommand("50%\nnext"), "50%25%0Anext")
   })
 })
+
+describe("action.yml", () => {
+  it("fits the GitHub Marketplace limits", async () => {
+    const { readFileSync } = await import("node:fs")
+    const yml = readFileSync(new URL("./action.yml", import.meta.url), "utf8")
+    const description = /^description: (.*)$/m.exec(yml)?.[1] ?? ""
+    assert.ok(description.length > 0, "action.yml needs a description")
+    assert.ok(description.length < 125, `The Marketplace needs a description under 125 characters, not ${description.length}`)
+  })
+})
