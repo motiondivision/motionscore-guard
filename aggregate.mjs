@@ -82,6 +82,8 @@ if (findings.length > 0) {
 
 lines.push(
   "",
+  "Guard is now part of Motion+ Pro, with baseline diffs and a required check. [Upgrade to Guard v2](https://motion.dev/dashboard/guard?utm_source=github&utm_medium=guard-comment)",
+  "",
   `<sub>Stop shipping animation performance regressions with **[MotionScore Guard](${GUARD_DOCS})**. Run your free audits at [score.motion.dev](https://score.motion.dev?utm_source=github&utm_medium=guard-comment)</sub>`,
   "",
 )
