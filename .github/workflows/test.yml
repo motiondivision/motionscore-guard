@@ -1,8 +1,8 @@
 name: Test
-# Self-test: runs this repo's action for real against a live site, one job
-# per mode so each produces its own clean summary. The free report job
-# always runs (and exercises the PR comment on pull requests); the gate job
-# runs when the MOTIONSCORE_TOKEN repository secret is set.
+# Self-test for the public mirror. The unit job covers the action's helpers.
+# The live job runs the action for real against motion.dev and sends the
+# result to the Guard API. It passes whatever the verdict is, as long as
+# the action reports one, because this repository may not be entitled.
 
 on:
   push:
@@ -10,19 +10,23 @@ on:
   pull_request:
   workflow_dispatch:
 
-env:
-  HAS_TOKEN: ${{ secrets.MOTIONSCORE_TOKEN != '' }}
-
 jobs:
-  report:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: node --test lib.node-test.mjs
+
+  live:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
-      - name: Report-only audit (free path)
-        id: audit
+      - name: Audit motion.dev
+        id: guard
         uses: ./
         with:
           url: https://motion.dev
@@ -31,23 +35,7 @@ jobs:
 
       - name: Assert outputs
         env:
-          GRADE: ${{ steps.audit.outputs.grade }}
-          PASS: ${{ steps.audit.outputs.pass }}
+          VERDICT: ${{ steps.guard.outputs.verdict }}
         run: |
-          echo "grade=$GRADE pass=$PASS"
-          [[ "$GRADE" =~ ^[SABCDF]$ ]] || { echo "unexpected grade output"; exit 1; }
-          [ "$PASS" = "true" ] || { echo "expected pass=true on a report-only run"; exit 1; }
-
-  gate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Threshold gate (paid path)
-        if: env.HAS_TOKEN == 'true'
-        uses: ./
-        with:
-          url: https://motion.dev
-          threshold: F
-          token: ${{ secrets.MOTIONSCORE_TOKEN }}
-          comment: "false"
+          echo "verdict=$VERDICT"
+          [[ "$VERDICT" =~ ^(pass|fail|waived|baseline|not_entitled|not_installed|unavailable)$ ]] || { echo "unexpected verdict output"; exit 1; }

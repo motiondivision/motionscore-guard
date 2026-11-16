@@ -1,5 +1,5 @@
-name: MotionScore Guard
-description: Audit animation performance on every PR. Grades pages S to F, comments the results, and fails builds below your threshold.
+name: Motion Performance Guard
+description: Catch animation performance regressions on every PR. Audits pages on your runner and reports a baseline diff as a required check. Part of Motion+ Pro.
 author: Motion
 branding:
   icon: activity
@@ -7,45 +7,41 @@ branding:
 
 inputs:
   url:
-    description: Base URL to audit. Defaults to the preview URL from the deployment_status event, so it can be omitted on preview-deploy workflows.
+    description: Base URL to audit. Defaults to the preview URL from the deployment_status event. Required on push events, where it is usually your production URL.
     required: false
     default: ""
   pages:
-    description: Newline-separated paths to audit, relative to url
-    required: false
-    default: /
-  threshold:
-    description: Fail the run if any page grades worse than this tier (S/A/B/C/D/F). Requires a paid MotionScore plan and token. Empty = report only.
+    description: Newline-separated paths to audit, relative to url. Empty = "/" plus up to 4 short paths from <url>/sitemap.xml on the same host.
     required: false
     default: ""
-  token:
-    description: MotionScore API token (store as a repository secret)
+  floor:
+    description: Fail the check if any page grades worse than this tier (S/A/B/C/D/F), or "none" for no floor.
     required: false
-    default: ""
+    default: "C"
+  max-drop:
+    description: Largest drop in grades from the main-branch baseline that still passes the check.
+    required: false
+    default: "1"
   serve:
     description: Optional command that builds and serves the site before auditing, e.g. "npm run build && npx serve dist -l 4173"
     required: false
     default: ""
-  upload:
-    description: Upload reports to score.motion.dev (consumes monthly audit slots; adds a results link to the comment)
-    required: false
-    default: "false"
-  comment:
-    description: Post or update a sticky PR comment with the results
-    required: false
-    default: "true"
   cli-version:
     description: motionscore CLI version to run
     required: false
-    default: "0.1.2"
+    default: "0.2.0"
+  api-url:
+    description: Motion API base URL
+    required: false
+    default: "https://api.motion.dev"
 
 outputs:
-  grade:
-    description: Worst overall tier across the audited pages
-    value: ${{ steps.aggregate.outputs.grade }}
-  pass:
-    description: '"true" when every page met the threshold (or no threshold was set)'
-    value: ${{ steps.aggregate.outputs.pass }}
+  verdict:
+    description: 'pass, fail, waived or baseline from the API. not_entitled, not_installed, unavailable or error when the run was not graded. Empty when the deployment was skipped.'
+    value: ${{ steps.send.outputs.verdict }}
+  check-url:
+    description: URL of the "Motion Performance Guard" check run, when the API created one
+    value: ${{ steps.send.outputs.check-url }}
 
 runs:
   using: composite
@@ -70,8 +66,8 @@ runs:
         fi
         URL="${INPUT_URL:-$DEPLOY_URL}"
         if [ -z "$URL" ]; then
-          echo "::error::No url input, and this event carries no preview deployment URL. Pass url:, or copy the full workflow from https://score.motion.dev/docs/guard"
-          exit 2
+          echo "::error::No url input, and this event carries no preview deployment URL. Pass url: (on push events, your production URL). See https://github.com/motiondivision/motionscore-guard#setup"
+          exit 1
         fi
         echo "skip=false" >> "$GITHUB_OUTPUT"
         echo "url=$URL" >> "$GITHUB_OUTPUT"
@@ -85,14 +81,12 @@ runs:
 
     - name: Audit pages
       if: steps.resolve.outputs.skip != 'true'
-      id: audit
       shell: bash
       env:
         BASE_URL: ${{ steps.resolve.outputs.url }}
         PAGES: ${{ inputs.pages }}
-        THRESHOLD: ${{ inputs.threshold }}
-        MOTIONSCORE_TOKEN: ${{ inputs.token }}
-        UPLOAD: ${{ inputs.upload }}
+        FLOOR: ${{ inputs.floor }}
+        MAX_DROP: ${{ inputs.max-drop }}
         SERVE: ${{ inputs.serve }}
         CLI_VERSION: ${{ inputs.cli-version }}
         # GitHub's ubuntu-latest (24.04+) blocks Chrome's sandbox via
@@ -114,95 +108,29 @@ runs:
           done
         fi
 
-        status=0
+        # Resolves the page list (sitemap when pages is empty) and checks
+        # the floor and max-drop inputs before any audit runs.
+        node "$GITHUB_ACTION_PATH/pages.mjs" > "$OUT/pages.txt" || exit 1
+
         i=0
         while IFS= read -r page; do
-          page="$(echo "$page" | xargs)"
           [ -z "$page" ] && continue
           i=$((i+1))
-          printf '%s\n' "$page" >> "$OUT/pages.txt"
-          args=(--summary "$OUT/summary-$i.json")
-          if [ "$UPLOAD" = "true" ]; then args+=(--upload); else args+=(--no-upload); fi
-          if [ -n "$THRESHOLD" ]; then args+=(--threshold "$THRESHOLD"); fi
           echo "::group::Auditing $BASE$page"
           # GitHub injects bash -e into composite run steps; the || keeps a
-          # failing audit from aborting the loop before results aggregate.
-          code=0
-          npx --yes "motionscore@$CLI_VERSION" "$BASE$page" "${args[@]}" || code=$?
+          # failing audit from aborting the loop. A page with no summary
+          # file is sent as a failed audit.
+          npx --yes "motionscore@$CLI_VERSION" "$BASE$page" --guard --summary "$OUT/summary-$i.json" || echo "::warning::Audit failed for $page"
           echo "::endgroup::"
-          if [ "$code" -eq 2 ]; then
-            status=2
-          elif [ "$code" -eq 1 ] && [ "$status" -ne 2 ]; then
-            status=1
-          fi
-        done <<< "$PAGES"
+        done < "$OUT/pages.txt"
 
-        echo "status=$status" >> "$GITHUB_OUTPUT"
-
-    - name: Aggregate results
+    - name: Send results
       if: steps.resolve.outputs.skip != 'true'
-      id: aggregate
+      id: send
       shell: bash
       env:
         BASE_URL: ${{ steps.resolve.outputs.url }}
-        THRESHOLD: ${{ inputs.threshold }}
-      run: node "$GITHUB_ACTION_PATH/aggregate.mjs" "$RUNNER_TEMP/motionscore"
-
-    - name: Comment on PR
-      if: ${{ inputs.comment == 'true' && steps.resolve.outputs.skip != 'true' }}
-      uses: actions/github-script@v9
-      with:
-        script: |
-          const fs = require("fs")
-          const path = `${process.env.RUNNER_TEMP}/motionscore/comment.md`
-          if (!fs.existsSync(path)) return
-          const body = fs.readFileSync(path, "utf8")
-          const marker = "<!-- motionscore-guard -->"
-
-          let prNumber = context.payload.pull_request?.number
-          if (!prNumber && context.sha) {
-            try {
-              const { data } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-                ...context.repo,
-                commit_sha: context.sha,
-              })
-              prNumber = data.find((pr) => pr.state === "open")?.number ?? data[0]?.number
-            } catch (err) {
-              core.warning(`Could not resolve a PR for ${context.sha}: ${err.message}`)
-            }
-          }
-          if (!prNumber) {
-            core.info("No pull request found for this run; skipping comment.")
-            return
-          }
-
-          try {
-            const { data: comments } = await github.rest.issues.listComments({
-              ...context.repo,
-              issue_number: prNumber,
-              per_page: 100,
-            })
-            const existing = comments.find((c) => c.body?.includes(marker))
-            if (existing) {
-              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body })
-            } else {
-              await github.rest.issues.createComment({ ...context.repo, issue_number: prNumber, body })
-            }
-          } catch (err) {
-            core.warning(`Could not post the MotionScore comment (needs pull-requests: write): ${err.message}`)
-          }
-
-    - name: Enforce threshold
-      if: steps.resolve.outputs.skip != 'true'
-      shell: bash
-      env:
-        STATUS: ${{ steps.audit.outputs.status }}
-      run: |
-        if [ "$STATUS" = "2" ]; then
-          echo "One or more audits failed to run."
-          exit 2
-        fi
-        if [ "$STATUS" = "1" ]; then
-          echo "One or more pages graded below the threshold."
-          exit 1
-        fi
+        FLOOR: ${{ inputs.floor }}
+        MAX_DROP: ${{ inputs.max-drop }}
+        API_URL: ${{ inputs.api-url }}
+      run: node "$GITHUB_ACTION_PATH/send.mjs" "$RUNNER_TEMP/motionscore"
