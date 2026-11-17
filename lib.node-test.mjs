@@ -11,7 +11,6 @@ import {
   interpretResponse,
   parsePages,
   parsePolicy,
-  pickSitemapPaths,
   renderStepSummary,
 } from "./lib.mjs"
 
@@ -46,57 +45,6 @@ describe("parsePolicy", () => {
     assert.throws(() => parsePolicy("C", "1.5"), /max-drop/)
     assert.throws(() => parsePolicy("C", "six"), /max-drop/)
     assert.throws(() => parsePolicy("C", "6"), /max-drop/)
-  })
-})
-
-describe("pickSitemapPaths", () => {
-  const sitemap = (...locs) =>
-    `<?xml version="1.0"?><urlset>${locs.map((l) => `<url><loc>${l}</loc></url>`).join("")}</urlset>`
-
-  it("puts / first, then the shortest paths", () => {
-    const xml = sitemap(
-      "https://example.com/",
-      "https://example.com/docs/getting-started",
-      "https://example.com/pricing",
-      "https://example.com/blog",
-      "https://example.com/about/",
-      "https://example.com/docs",
-      "https://example.com/careers/engineering",
-    )
-    assert.deepEqual(pickSitemapPaths(xml, "https://example.com"), ["/", "/blog", "/docs", "/about", "/pricing"])
-  })
-
-  it("uses paths from production hosts, and ignores nested sitemaps and duplicates", () => {
-    const xml = sitemap(
-      "https://www.example.com/a",
-      "https://example.com/sitemap-pages.xml",
-      "https://example.com/b",
-      "https://example.com/b/",
-      "https://example.com/b?ref=x",
-    )
-    assert.deepEqual(pickSitemapPaths(xml, "https://example.com/"), ["/", "/a", "/b"])
-  })
-
-  it("reads CDATA and whitespace around locs", () => {
-    const xml = "<urlset><url><loc>\n  <![CDATA[https://example.com/x]]>\n</loc></url></urlset>"
-    assert.deepEqual(pickSitemapPaths(xml, "https://example.com"), ["/", "/x"])
-  })
-
-  it("keeps paths relative to a base URL with a path", () => {
-    const xml = sitemap("https://example.com/docs/a", "https://example.com/blog/b", "https://example.com/docs")
-    assert.deepEqual(pickSitemapPaths(xml, "https://example.com/docs"), ["/", "/a"])
-  })
-
-  it("falls back to / for empty or invalid input", () => {
-    assert.deepEqual(pickSitemapPaths("", "https://example.com"), ["/"])
-    assert.deepEqual(pickSitemapPaths("<html>not a sitemap</html>", "https://example.com"), ["/"])
-    assert.deepEqual(pickSitemapPaths(sitemap("https://example.com/a"), "not a url"), ["/"])
-  })
-
-  it("respects the limit", () => {
-    const xml = sitemap(...["a", "b", "c", "d", "e", "f"].map((p) => `https://example.com/${p}`))
-    assert.equal(pickSitemapPaths(xml, "https://example.com").length, 5)
-    assert.deepEqual(pickSitemapPaths(xml, "https://example.com", 2), ["/", "/a", "/b"])
   })
 })
 
@@ -147,7 +95,13 @@ describe("buildPayload", () => {
       baseUrl: "https://preview.example.com",
       pages: [{ path: "/", summary }, { path: "/broken", summary: null }],
       policy: { floor: "C", maxDrop: 1 },
+      pagesSet: true,
     })
+  })
+
+  it("says when the workflow listed no pages", () => {
+    const payload = buildPayload({ kind: "pr", sha: "abc", baseUrl: "https://x.dev", pages: [{ path: "/" }], policy: { floor: "C", maxDrop: 1 }, pagesSet: false })
+    assert.equal(payload.pagesSet, false)
   })
 })
 

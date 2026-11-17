@@ -24,8 +24,6 @@ The action does not post comments and does not fail your job on the verdict. The
 name: Motion Performance Guard
 on:
   deployment_status:
-  push:
-    branches: [main]
 permissions:
   id-token: write
   contents: read
@@ -35,39 +33,48 @@ jobs:
     steps:
       - uses: motiondivision/motionscore-guard@v2
         with:
-          url: ${{ github.event_name == 'push' && 'https://your-production-site.com' || '' }}
+          pages: |
+            /
+            /pricing
 ```
 
-Replace `https://your-production-site.com` with your production URL.
+There is no URL to set. Most hosts, such as Vercel and Netlify, emit the `deployment_status` event, and the action audits the deployment's own URL once it succeeds:
 
-- **Pull requests:** Vercel, Cloudflare Pages and Netlify emit the `deployment_status` event with the preview URL. The action reads the URL from the event. It waits until the deployment succeeds, then audits the preview.
-- **Baseline:** a push to your default branch has no preview URL, so the `url` input gives your production URL. The first run on a repo saves the baseline, even when it is a pull request. After that, runs on the default branch update it: pushes, schedules and manual runs. Deployments are never baselines, and a pull request never replaces an existing baseline.
+- **Preview deployments** check pull requests against the baseline.
+- **Production deployments** of your default branch update the baseline. Motion checks with GitHub that the deployed commit is on the default branch, so a preview never becomes the baseline.
+- **First run:** the first run on a repo saves the baseline, even when it is a pull request. A pull request never replaces an existing baseline.
 
 `permissions: id-token: write` is required. Without it, the action cannot get an OIDC token and the job fails.
 
-If you prefer, put the push case in a separate job:
+Deploy from your own CI? Run Guard after your deploy step and pass `url:`.
+
+No preview deployments? Build and serve the site on the runner instead, and set `url` and `serve`:
 
 ```yaml
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  id-token: write
+  contents: read
 jobs:
-  preview:
-    if: github.event_name == 'deployment_status'
+  guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: motiondivision/motionscore-guard@v2
-  baseline:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci && npm run build
       - uses: motiondivision/motionscore-guard@v2
         with:
-          url: https://your-production-site.com
+          url: http://localhost:4173
+          serve: npx --yes serve@14 -l 4173 dist
 ```
 
 ## Choose pages
 
-By default, the action audits `/` and up to four more paths from `<url>/sitemap.xml`. It picks paths on the same host as `url`, shortest first. If there is no sitemap, it audits `/` only.
+List the pages with your key animations under `pages:`. Guard audits the same list on main and on pull requests, so the grades compare like with like. With no `pages:`, Guard audits / only.
 
-To choose the pages yourself:
+For example:
 
 ```yaml
       - uses: motiondivision/motionscore-guard@v2
@@ -82,8 +89,8 @@ To choose the pages yourself:
 
 | Input | Default | Description |
 | --- | --- | --- |
-| `url` | auto | Base URL to audit. Defaults to the preview URL on the `deployment_status` event. Required on `push` events |
-| `pages` | auto | Newline-separated paths, relative to `url`. Empty means `/` plus up to four paths from the sitemap |
+| `url` | auto | Base URL to audit. Leave it empty on `deployment_status` workflows: Guard audits the deployment's own URL. Set it when you serve the site in CI |
+| `pages` | `/` | Newline-separated paths to audit, relative to the deployment URL. Default: `/` |
 | `floor` | `C` | The check fails if any page grades worse than this tier (S/A/B/C/D/F). `none` turns the floor off |
 | `max-drop` | `1` | The largest drop in grades from the baseline that still passes the check |
 | `serve` | none | Command that builds and serves the site before the audit, for example `npm run build && npx serve dist -l 4173` |

@@ -7,11 +7,11 @@ branding:
 
 inputs:
   url:
-    description: Base URL to audit. Defaults to the preview URL from the deployment_status event. Required on push events, where it is usually your production URL.
+    description: Base URL to audit. Leave empty on deployment_status workflows, where Guard audits the deployment's own URL. Set it when you serve the site in CI.
     required: false
     default: ""
   pages:
-    description: Newline-separated paths to audit, relative to url. Empty = "/" plus up to 4 short paths from <url>/sitemap.xml on the same host.
+    description: Newline-separated paths to audit, relative to the deployment URL. Default: /
     required: false
     default: ""
   floor:
@@ -37,7 +37,7 @@ inputs:
 
 outputs:
   verdict:
-    description: 'pass, fail, waived or baseline from the API. not_entitled, not_installed, unavailable or error when the run was not graded. Empty when the deployment was skipped.'
+    description: 'pass, fail, waived or baseline from the API, or not_covered when the author has no seat. not_entitled, not_installed, unavailable or error when the run was not graded. Empty when the deployment was skipped.'
     value: ${{ steps.send.outputs.verdict }}
   check-url:
     description: URL of the "Motion Performance Guard" check run, when the API created one
@@ -46,8 +46,8 @@ outputs:
 runs:
   using: composite
   steps:
-    # Lets the bare `uses:` line work on preview-deploy workflows: with no
-    # url input, read the preview URL from the deployment_status event, and
+    # Lets the bare `uses:` line work on deploy workflows: with no url input,
+    # read the deployment's URL from the deployment_status event, and
     # no-op politely on the pending/failure states so users don't need the
     # `if:` guard.
     - name: Resolve URL
@@ -58,15 +58,16 @@ runs:
         EVENT_NAME: ${{ github.event_name }}
         DEPLOY_STATE: ${{ github.event.deployment_status.state }}
         DEPLOY_URL: ${{ github.event.deployment_status.environment_url }}
+        DEPLOY_TARGET_URL: ${{ github.event.deployment_status.target_url }}
       run: |
         if [ "$EVENT_NAME" = "deployment_status" ] && [ "$DEPLOY_STATE" != "success" ]; then
           echo "Deployment state is '$DEPLOY_STATE'; Guard audits once it reaches 'success'. Skipping."
           echo "skip=true" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        URL="${INPUT_URL:-$DEPLOY_URL}"
+        URL="${INPUT_URL:-${DEPLOY_URL:-$DEPLOY_TARGET_URL}}"
         if [ -z "$URL" ]; then
-          echo "::error::No url input, and this event carries no preview deployment URL. Pass url: (on push events, your production URL). See https://github.com/motiondivision/motionscore-guard#setup"
+          echo "::error::This event carries no deployment URL. Run Guard on deployment_status events, or pass url: when you serve the site in CI. See https://github.com/motiondivision/motionscore-guard#setup"
           exit 1
         fi
         echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -108,7 +109,7 @@ runs:
           done
         fi
 
-        # Resolves the page list (sitemap when pages is empty) and checks
+        # Resolves the page list ("/" when pages is empty) and checks
         # the floor and max-drop inputs before any audit runs.
         node "$GITHUB_ACTION_PATH/pages.mjs" > "$OUT/pages.txt" || exit 1
 
@@ -129,6 +130,7 @@ runs:
       id: send
       shell: bash
       env:
+        PAGES: ${{ inputs.pages }}
         BASE_URL: ${{ steps.resolve.outputs.url }}
         FLOOR: ${{ inputs.floor }}
         MAX_DROP: ${{ inputs.max-drop }}

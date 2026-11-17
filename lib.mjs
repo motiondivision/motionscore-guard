@@ -3,11 +3,10 @@
 
 export const TIERS = ["S", "A", "B", "C", "D", "F"]
 export const OIDC_AUDIENCE = "https://api.motion.dev/guard"
-export const MAX_SITEMAP_PAGES = 4
 
 export class ConfigError extends Error {}
 
-/* Newline-separated `pages` input. Empty means auto (sitemap). */
+/* Newline-separated `pages` input. Empty means "/" only. */
 export function parsePages(input) {
   return (input ?? "")
     .split("\n")
@@ -39,54 +38,15 @@ function trimSlash(value) {
   return value.replace(/\/+$/, "")
 }
 
-/* Picks up to `limit` extra paths from a sitemap, shortest paths first.
- * Preview deploys often serve a sitemap that lists production URLs, so the
- * path is used whatever the host; the base URL's path prefix applies only
- * to same-host entries. "/" always comes
- * first. Paths are relative to the base URL. */
-export function pickSitemapPaths(xml, baseUrl, limit = MAX_SITEMAP_PAGES) {
-  let base
-  try {
-    base = new URL(baseUrl)
-  } catch {
-    return ["/"]
-  }
-  const prefix = trimSlash(base.pathname)
-  const seen = new Set(["/"])
-  const candidates = []
-
-  for (const match of (xml ?? "").matchAll(/<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]]+?)\s*(?:\]\]>)?\s*<\/loc>/gi)) {
-    let loc
-    try {
-      loc = new URL(match[1].replace(/&amp;/g, "&"), base)
-    } catch {
-      continue
-    }
-    // Sitemap indexes list other sitemaps, not pages.
-    if (/\.xml(\.gz)?$/i.test(loc.pathname)) continue
-    let path = loc.pathname
-    if (prefix && loc.host === base.host) {
-      if (path !== prefix && !path.startsWith(`${prefix}/`)) continue
-      path = path.slice(prefix.length) || "/"
-    }
-    path = path.length > 1 ? trimSlash(path) || "/" : path
-    if (seen.has(path)) continue
-    seen.add(path)
-    candidates.push(path)
-  }
-
-  candidates.sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0))
-  return ["/", ...candidates.slice(0, limit)]
-}
-
 /* "baseline" for a push to the default branch, or a deployment of it.
  * Everything else (pull requests, preview deploys, manual runs) is "pr". */
 export function detectKind(eventName, event, ref) {
   const defaultBranch = event?.repository?.default_branch
   if (!defaultBranch) return "pr"
   // The API accepts baselines only from these events, on the default
-  // branch. A deployment_status of production is a "pr" run: with no open
-  // pull request for its commit, the API records it and posts nothing.
+  // branch. Deployments are sent as "pr" runs: the API checks with GitHub
+  // whether the deployed commit is on the default branch and, if it is,
+  // saves the run as a baseline.
   if (eventName === "push" || eventName === "schedule" || eventName === "workflow_dispatch") {
     return ref === `refs/heads/${defaultBranch}` ? "baseline" : "pr"
   }
@@ -101,13 +61,16 @@ export function detectSha(eventName, event, fallbackSha) {
   return fallbackSha ?? ""
 }
 
-export function buildPayload({ kind, sha, baseUrl, pages, policy }) {
+/* `pagesSet` is false when the workflow gave no `pages:` and Guard audited
+ * "/" only, so the check can say how to audit more. */
+export function buildPayload({ kind, sha, baseUrl, pages, policy, pagesSet = true }) {
   return {
     kind,
     sha,
     baseUrl: trimSlash(baseUrl),
     pages: pages.map(({ path, summary }) => ({ path, summary: summary ?? null })),
     policy: { floor: policy.floor, maxDrop: policy.maxDrop },
+    pagesSet,
   }
 }
 

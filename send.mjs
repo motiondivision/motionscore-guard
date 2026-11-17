@@ -11,6 +11,7 @@ import {
   ConfigError,
   buildPayload,
   detectKind,
+  parsePages,
   detectSha,
   escapeCommand,
   interpretResponse,
@@ -82,7 +83,8 @@ const pages = paths.map((path, index) => {
 
 const kind = detectKind(eventName, event, process.env.GITHUB_REF)
 const sha = detectSha(eventName, event, process.env.GITHUB_SHA)
-const payload = buildPayload({ kind, sha, baseUrl, pages, policy })
+const pagesSet = parsePages(process.env.PAGES).length > 0
+const payload = buildPayload({ kind, sha, baseUrl, pages, policy, pagesSet })
 const context = { kind, baseUrl, pages }
 
 console.log(`Sending ${pages.length} page(s) to ${apiUrl}/guard/runs as a ${kind} run for ${sha}`)
