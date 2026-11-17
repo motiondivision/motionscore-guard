@@ -41,7 +41,7 @@ jobs:
 Replace `https://your-production-site.com` with your production URL.
 
 - **Pull requests:** Vercel, Cloudflare Pages and Netlify emit the `deployment_status` event with the preview URL. The action reads the URL from the event. It waits until the deployment succeeds, then audits the preview.
-- **Baseline:** a push to your default branch has no preview URL, so the `url` input gives your production URL. Runs on the default branch become the baseline that pull requests are compared with. Scheduled and manual runs on the default branch are baselines too. Deployments are never baselines.
+- **Baseline:** a push to your default branch has no preview URL, so the `url` input gives your production URL. The first run on a repo saves the baseline, even when it is a pull request. After that, runs on the default branch update it: pushes, schedules and manual runs. Deployments are never baselines, and a pull request never replaces an existing baseline.
 
 `permissions: id-token: write` is required. Without it, the action cannot get an OIDC token and the job fails.
 
