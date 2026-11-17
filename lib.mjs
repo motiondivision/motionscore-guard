@@ -143,7 +143,7 @@ export function interpretResponse(status, body) {
       verdict: "not_entitled",
       checkUrl: "",
       link: body?.connectUrl ?? "",
-      text: message || "This repository is not covered by a Motion+ Pro plan.",
+      text: message || "This repository is not covered by a Motion Cloud plan.",
     }
   }
   if (status === 404 && body?.error === "not_installed") {
@@ -153,7 +153,7 @@ export function interpretResponse(status, body) {
       verdict: "not_installed",
       checkUrl: "",
       link: body?.installUrl ?? "",
-      text: message || "The Motion GitHub App is not installed on this repository.",
+      text: message || "The Motion Performance app is not installed on this repository.",
     }
   }
   if (status >= 500) {

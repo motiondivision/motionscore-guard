@@ -4,20 +4,20 @@
 
 Catch animation performance regressions before they merge. Motion Performance Guard audits your pages on every pull request, compares them with your main-branch baseline, and reports the result as a required check.
 
-Motion Performance Guard is part of [Motion+ Pro](https://motion.dev/dashboard/guard?utm_source=github&utm_medium=guard-readme).
+Motion Performance Guard is part of [Motion Cloud](https://motion.dev/dashboard/guard?utm_source=github&utm_medium=guard-readme).
 
 ## How it works
 
 1. The action audits each page on your own runner with the [`motionscore`](https://www.npmjs.com/package/motionscore) CLI. It grades each page S to F for compositor, paint and layout cost, scroll animations, layout thrashing and GPU pressure.
 2. The action sends the results to Motion. It signs in with GitHub's OIDC token, so there is no API token to store.
-3. Motion compares the results with the baseline from your default branch. The Motion GitHub App then posts a PR comment and a check run named **Motion Performance Guard**.
+3. Motion compares the results with the baseline from your default branch. The Motion Performance app then posts a PR comment and a check run named **Motion Performance Guard**.
 
 The action does not post comments and does not fail your job on the verdict. The check run is the gate. To block merges, make **Motion Performance Guard** a required check in your branch protection rules.
 
 ## Setup
 
-1. Subscribe to [Motion+ Pro](https://motion.dev/dashboard/guard?utm_source=github&utm_medium=guard-readme).
-2. Install the Motion GitHub App on your repository from the [Guard dashboard](https://motion.dev/dashboard/guard?utm_source=github&utm_medium=guard-readme).
+1. Subscribe to [Motion Cloud](https://motion.dev/dashboard/guard?utm_source=github&utm_medium=guard-readme).
+2. Install the Motion Performance app on your repository from the [Guard dashboard](https://motion.dev/dashboard/guard?utm_source=github&utm_medium=guard-readme).
 3. Create `.github/workflows/motion-performance-guard.yml`:
 
 ```yaml
@@ -102,7 +102,7 @@ The job passes for every verdict, including `fail`. Use the check run to block m
 | Situation | Result |
 | --- | --- |
 | Motion graded the run | Exit `0`. The step summary shows the verdict and links |
-| No Motion+ Pro plan, or the GitHub App is not installed | Exit `0` with a warning and a setup link |
+| No Motion Cloud plan, or the GitHub App is not installed | Exit `0` with a warning and a setup link |
 | The Motion API cannot be reached, or has an error | Exit `0` with a warning. The run is not graded |
 | `permissions: id-token: write` is missing | Exit `1` |
 | Motion rejected the request for another reason | Exit `1` |

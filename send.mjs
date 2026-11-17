@@ -1,5 +1,5 @@
 /* Sends the per-page --guard summaries to the Motion Performance Guard API.
- * The API checks the Motion+ Pro entitlement, diffs against the main-branch
+ * The API checks the Motion Cloud entitlement, diffs against the main-branch
  * baseline, and posts the PR comment and check run. This script never fails
  * the job on the verdict: the check run is the gate.
  * Run as: node send.mjs <dir> with BASE_URL, API_URL, FLOOR and MAX_DROP in
