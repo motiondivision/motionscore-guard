@@ -107,7 +107,7 @@ describe("buildPayload", () => {
 
 describe("interpretResponse", () => {
   it("exits 0 for every verdict, including fail", () => {
-    for (const verdict of ["pass", "fail", "waived", "baseline"]) {
+    for (const verdict of ["pass", "fail", "skipped", "baseline"]) {
       const r = interpretResponse(200, { verdict, runId: "r", checkRunUrl: "https://c", message: "m" })
       assert.equal(r.exitCode, 0)
       assert.equal(r.verdict, verdict)

@@ -99,7 +99,7 @@ For example:
 
 ## Outputs
 
-- `verdict`: `pass`, `fail`, `waived` or `baseline` from Motion. When the run is not graded: `not_entitled`, `not_installed`, `unavailable` or `error`.
+- `verdict`: `pass`, `fail`, `skipped` or `baseline` from Motion. When the run is not graded: `not_entitled`, `not_installed`, `unavailable` or `error`.
 - `check-url`: the URL of the check run, when Motion created one.
 
 ## Exit codes

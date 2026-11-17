@@ -37,7 +37,7 @@ inputs:
 
 outputs:
   verdict:
-    description: 'pass, fail, waived or baseline from the API, or not_covered when the author has no seat. not_entitled, not_installed, unavailable or error when the run was not graded. Empty when the deployment was skipped.'
+    description: 'pass, fail, skipped or baseline from the API, or not_covered when the author has no seat. not_entitled, not_installed, unavailable or error when the run was not graded. Empty when the deployment was skipped.'
     value: ${{ steps.send.outputs.verdict }}
   check-url:
     description: URL of the "Motion Performance Guard" check run, when the API created one
